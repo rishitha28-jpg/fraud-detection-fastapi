@@ -24,6 +24,13 @@ This project builds and deploys a **fraud detection system** that:
 - Uvicorn
 - GitHub + Render
 
----
+## 🔗 Live Project Links
 
-## 📂 Project Structure
+- **GitHub Repository:**  
+  https://github.com/rishitha28-jpg/fraud-detection-fastapi
+
+- **Live API Base URL:**  
+  https://fraud-detection-fastapi-ouqr.onrender.com
+
+- **Swagger API Documentation:**  
+  https://fraud-detection-fastapi-ouqr.onrender.com/docs
