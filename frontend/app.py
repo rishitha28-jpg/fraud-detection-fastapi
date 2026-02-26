@@ -1,7 +1,11 @@
 import streamlit as st
 import requests
 
-API_URL = "http://127.0.0.1:8000/predict"
+# --------------------------------------------------
+# CONFIG
+# --------------------------------------------------
+API_URL = "https://fraud-detection-fastapi-ouqr.onrender.com/predict"
+HEALTH_URL = "https://fraud-detection-fastapi-ouqr.onrender.com/health"
 
 # --------------------------------------------------
 # PAGE CONFIG
@@ -16,6 +20,21 @@ st.set_page_config(
 # --------------------------------------------------
 st.title("💳 Fraud Detection System")
 st.caption("Real-time transaction risk assessment using Machine Learning")
+
+# --------------------------------------------------
+# BACKEND HEALTH CHECK (INDUSTRY PRACTICE)
+# --------------------------------------------------
+with st.spinner("Checking system status..."):
+    try:
+        health = requests.get(HEALTH_URL, timeout=3)
+        if health.status_code == 200:
+            st.success("🟢 Fraud Detection API is online")
+        else:
+            st.warning("🟡 API reachable but unhealthy")
+    except Exception:
+        st.error("🔴 Backend service is unavailable")
+
+st.divider()
 
 # --------------------------------------------------
 # USER INPUTS
@@ -37,7 +56,7 @@ hour = st.slider(
 # --------------------------------------------------
 # BUTTON ACTION
 # --------------------------------------------------
-if st.button("Check Fraud", disabled=(amount == 0)):
+if st.button("Check Fraud", disabled=(amount <= 0)):
 
     payload = {
         "amount": amount,
@@ -75,7 +94,7 @@ if st.button("Check Fraud", disabled=(amount == 0)):
             st.divider()
 
             # --------------------------------------------------
-            # 1️⃣ DECISION (EXECUTIVE STYLE)
+            # 1️⃣ DECISION (EXECUTIVE VIEW)
             # --------------------------------------------------
             st.markdown(
                 f"<h2 style='margin-bottom:0;'>{decision_icon} {decision}</h2>",
@@ -83,37 +102,37 @@ if st.button("Check Fraud", disabled=(amount == 0)):
             )
 
             # --------------------------------------------------
-            # 2️⃣ EXECUTIVE METRICS ROW
+            # 2️⃣ EXECUTIVE METRICS
             # --------------------------------------------------
             col1, col2, col3 = st.columns(3)
 
-            col1.markdown("**Risk Tier**")
-            col1.markdown(f"<h3>{risk}</h3>", unsafe_allow_html=True)
-
-            col2.markdown("**Fraud Probability**")
-            col2.markdown(f"<h3>{fraud_prob_pct}%</h3>", unsafe_allow_html=True)
-
-            col3.markdown("**Confidence (Safe)**")
-            col3.markdown(f"<h3>{confidence_safe}%</h3>", unsafe_allow_html=True)
+            col1.metric("Risk Tier", risk)
+            col2.metric("Fraud Probability", f"{fraud_prob_pct}%")
+            col3.metric("Confidence (Safe)", f"{confidence_safe}%")
 
             # --------------------------------------------------
-            # 3️⃣ RISK FACTORS
+            # 3️⃣ RISK FACTORS (EXPLAINABILITY)
             # --------------------------------------------------
-            st.markdown("### 🔍 Risk Factors Identified")
+            st.subheader("🔍 Risk Factors Identified")
 
             reasons = []
 
             if amount >= 100000:
-                reasons.append("• High transaction amount detected")
+                reasons.append("⚠ High transaction amount detected")
+            else:
+                reasons.append("✔ Transaction amount within normal range")
+
             if hour < 6 or hour > 22:
-                reasons.append("• Unusual transaction timing")
+                reasons.append("⚠ Unusual transaction timing")
+            else:
+                reasons.append("✔ Transaction timing within normal range")
 
             if risk == "HIGH":
-                reasons.append("• Strong fraud indicators detected")
+                reasons.append("❌ Strong fraud indicators detected")
             elif risk == "MEDIUM":
-                reasons.append("• Moderate anomaly patterns detected")
+                reasons.append("⚠ Moderate anomaly patterns detected")
             else:
-                reasons.append("• No significant anomaly patterns detected")
+                reasons.append("✔ No significant anomaly patterns detected")
 
             for r in reasons:
                 st.write(r)
@@ -121,7 +140,7 @@ if st.button("Check Fraud", disabled=(amount == 0)):
             # --------------------------------------------------
             # 4️⃣ RECOMMENDED ACTION
             # --------------------------------------------------
-            st.markdown("### ➡ Recommended Action")
+            st.subheader("➡ Recommended Action")
 
             if risk == "LOW":
                 st.success(action)
@@ -134,10 +153,10 @@ if st.button("Check Fraud", disabled=(amount == 0)):
             st.error(f"API Error ({response.status_code})")
             st.code(response.text)
 
-    except requests.exceptions.ConnectionError:
-        st.error("❌ Backend API not running")
     except requests.exceptions.Timeout:
         st.error("⏱ Request timed out")
+    except requests.exceptions.ConnectionError:
+        st.error("❌ Unable to reach backend service")
     except Exception as e:
         st.error("Unexpected error occurred")
         st.code(str(e))
@@ -148,5 +167,6 @@ if st.button("Check Fraud", disabled=(amount == 0)):
 st.divider()
 st.caption(
     "⚠️ This output is generated by a machine learning model and is intended "
-    "as a decision-support tool. Final decisions should follow business and compliance policies."
+    "as a decision-support tool. Final decisions should follow business, risk, "
+    "and compliance policies."
 )
