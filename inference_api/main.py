@@ -5,59 +5,77 @@ import numpy as np
 import os
 from sqlalchemy.orm import Session
 
-# ✅ RELATIVE IMPORTS
-from .database import SessionLocal, engine, Base
-from .models import FraudPrediction
+# -----------------------------
+# RELATIVE IMPORTS
+# -----------------------------
 from .schemas import TransactionInput, FraudResponse
 
-# --------------------------------------------------
-# APP CONFIG
-# --------------------------------------------------
+# Optional DB imports (safe for Render)
+try:
+    from .database import SessionLocal, engine, Base
+    from .models import FraudPrediction
+    DB_AVAILABLE = True
+except Exception:
+    SessionLocal = None
+    engine = None
+    Base = None
+    FraudPrediction = None
+    DB_AVAILABLE = False
 
+# -----------------------------
+# APP CONFIG
+# -----------------------------
 app = FastAPI(
     title="Real-Time Transaction Fraud Detection API",
     version="1.0"
 )
 
-# --------------------------------------------------
+# -----------------------------
 # CREATE TABLES (ONLY IF DB EXISTS)
-# --------------------------------------------------
-
-if engine:
+# -----------------------------
+if DB_AVAILABLE and engine:
     Base.metadata.create_all(bind=engine)
 
-# --------------------------------------------------
-# DATABASE DEPENDENCY (OPTIONAL)
-# --------------------------------------------------
-
+# -----------------------------
+# DATABASE DEPENDENCY
+# -----------------------------
 def get_db() -> Optional[Session]:
-    if SessionLocal is None:
+    if not DB_AVAILABLE or SessionLocal is None:
         return None
     db = SessionLocal()
     try:
-        return db
+        yield db
     finally:
         db.close()
 
-# --------------------------------------------------
+# -----------------------------
 # MODEL LOADING
-# --------------------------------------------------
-
+# -----------------------------
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(CURRENT_DIR)
 MODEL_PATH = os.path.join(PROJECT_ROOT, "artifacts", "fraud_model.pkl")
 
 try:
     model = joblib.load(MODEL_PATH)
-    print("✅ Model loaded successfully")
+    print("✅ ML model loaded successfully")
 except Exception as e:
-    print("❌ Failed to load model:", e)
+    print("❌ Model load failed:", e)
     model = None
 
-# --------------------------------------------------
-# HEALTH CHECK
-# --------------------------------------------------
+# -----------------------------
+# ROOT ENDPOINT (NO 404)
+# -----------------------------
+@app.get("/")
+def root():
+    return {
+        "message": "Fraud Detection API is running",
+        "docs": "/docs",
+        "health": "/health"
+    }
 
+# -----------------------------
+# HEALTH CHECK
+# -----------------------------
 @app.get("/health", response_model=Dict[str, str])
 def health():
     return {
@@ -66,23 +84,20 @@ def health():
         "version": "1.0"
     }
 
-# --------------------------------------------------
+# -----------------------------
 # PREDICTION ENDPOINT
-# --------------------------------------------------
-
+# -----------------------------
 @app.post("/predict", response_model=FraudResponse)
 def predict(
     data: TransactionInput,
     db: Optional[Session] = Depends(get_db)
 ):
-
     if model is None:
         raise HTTPException(status_code=500, detail="Model not loaded")
 
-    # --------------------------------------------------
-    # 🔹 Internal Feature Engineering
-    # --------------------------------------------------
-
+    # -------------------------
+    # FEATURE ENGINEERING
+    # -------------------------
     v1 = data.amount / 10000
     v2 = data.hour / 24
     v3 = (data.amount * data.hour) / 100000
@@ -92,17 +107,12 @@ def predict(
     features = np.array([[
         data.amount,
         data.hour,
-        v1,
-        v2,
-        v3,
-        v4,
-        v5
+        v1, v2, v3, v4, v5
     ]])
 
-    # --------------------------------------------------
-    # 🔹 Model Prediction
-    # --------------------------------------------------
-
+    # -------------------------
+    # MODEL PREDICTION
+    # -------------------------
     probability = float(model.predict_proba(features)[0][1])
     fraud = probability >= 0.5
 
@@ -113,11 +123,10 @@ def predict(
     else:
         risk = "HIGH"
 
-    # --------------------------------------------------
-    # 🔹 Save to Database (ONLY IF DB EXISTS)
-    # --------------------------------------------------
-
-    if db is not None:
+    # -------------------------
+    # SAVE TO DB (OPTIONAL)
+    # -------------------------
+    if DB_AVAILABLE and db is not None:
         record = FraudPrediction(
             amount=data.amount,
             probability=probability,
@@ -127,10 +136,9 @@ def predict(
         db.add(record)
         db.commit()
 
-    # --------------------------------------------------
-    # 🔹 API Response
-    # --------------------------------------------------
-
+    # -------------------------
+    # RESPONSE
+    # -------------------------
     return FraudResponse(
         fraud=fraud,
         probability=round(probability, 4),
