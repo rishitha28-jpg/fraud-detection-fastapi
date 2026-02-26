@@ -1,36 +1,66 @@
-# Real-Time Transaction Fraud Detection API
+# Real-Time Fraud Detection System
 
-An industry-grade machine learning project for detecting fraudulent transactions in real time using **FastAPI**.
+An industry-grade, end-to-end Machine Learning system for real-time fraud detection, built with FastAPI and Streamlit and deployed on Render.
 
----
+## Overview
 
-## 🚀 Project Overview
+This project implements a production-style fraud detection pipeline that:
 
-This project builds and deploys a **fraud detection system** that:
-- Trains an ML model on transaction data
-- Exposes predictions via a FastAPI REST API
-- Returns fraud probability and risk level
-- Is deployable on **Render**
+- Serves real-time predictions via a FastAPI REST API  
+- Applies industry-standard decision logic (Approve / Review / Block)  
+- Displays results through an executive-style Streamlit dashboard  
+- Is deployed and accessible via cloud infrastructure  
 
----
+## Architecture
 
-## 🧠 Tech Stack
+User  
+→ Streamlit Frontend  
+→ FastAPI Backend (Render)  
+→ ML Model  
 
+## 🛠 Tech Stack
+
+**Backend**
 - Python 3.11
 - FastAPI
-- Scikit-learn
-- Pandas / NumPy
-- Joblib
 - Uvicorn
-- GitHub + Render
+- SQLAlchemy
 
-## 🔗 Live Project Links
+**Machine Learning**
+- Scikit-learn
+- Pandas, NumPy
+- Joblib
 
-- **GitHub Repository:**  
+**Frontend**
+- Streamlit
+
+**Deployment**
+- GitHub
+- Render (API)
+- Streamlit Cloud (UI)
+
+## Key Features
+
+- **Real-Time Fraud Scoring**
+- **Risk Tier Classification** (LOW / MEDIUM / HIGH)
+- **Decision Mapping**
+  - LOW → Approved
+  - MEDIUM → Review Required
+  - HIGH → Blocked
+- **Confidence & Risk Explanation**
+- **Executive-Style UI**
+
+## 🔗 Live Links
+
+- **GitHub Repository**  
   https://github.com/rishitha28-jpg/fraud-detection-fastapi
 
-- **Live API Base URL:**  
+- **Backend API (Render)**  
   https://fraud-detection-fastapi-ouqr.onrender.com
 
-- **Swagger API Documentation:**  
+- **Swagger API Docs**  
   https://fraud-detection-fastapi-ouqr.onrender.com/docs
+
+- **Health Check**  
+  https://fraud-detection-fastapi-ouqr.onrender.com/health
+
