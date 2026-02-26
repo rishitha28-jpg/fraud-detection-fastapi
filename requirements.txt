@@ -1,7 +1,9 @@
 fastapi
 uvicorn
+scikit-learn
 pandas
 numpy
-scikit-learn
 joblib
-imbalanced-learn
+sqlalchemy
+pymysql
+python-dotenv
