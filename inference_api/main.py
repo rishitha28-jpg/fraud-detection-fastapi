@@ -1,5 +1,5 @@
 from fastapi import FastAPI, Depends, HTTPException
-from typing import Dict
+from typing import Dict, Optional
 import joblib
 import numpy as np
 import os
@@ -19,17 +19,23 @@ app = FastAPI(
     version="1.0"
 )
 
-# Create DB tables
-Base.metadata.create_all(bind=engine)
-
 # --------------------------------------------------
-# DATABASE DEPENDENCY
+# CREATE TABLES (ONLY IF DB EXISTS)
 # --------------------------------------------------
 
-def get_db():
+if engine:
+    Base.metadata.create_all(bind=engine)
+
+# --------------------------------------------------
+# DATABASE DEPENDENCY (OPTIONAL)
+# --------------------------------------------------
+
+def get_db() -> Optional[Session]:
+    if SessionLocal is None:
+        return None
     db = SessionLocal()
     try:
-        yield db
+        return db
     finally:
         db.close()
 
@@ -65,28 +71,22 @@ def health():
 # --------------------------------------------------
 
 @app.post("/predict", response_model=FraudResponse)
-def predict(data: TransactionInput, db: Session = Depends(get_db)):
+def predict(
+    data: TransactionInput,
+    db: Optional[Session] = Depends(get_db)
+):
 
     if model is None:
         raise HTTPException(status_code=500, detail="Model not loaded")
 
     # --------------------------------------------------
-    # 🔹 Internal Feature Engineering (Industry Style)
+    # 🔹 Internal Feature Engineering
     # --------------------------------------------------
 
-    # Normalize amount
     v1 = data.amount / 10000
-
-    # Time normalization
     v2 = data.hour / 24
-
-    # Interaction feature
     v3 = (data.amount * data.hour) / 100000
-
-    # Amount modulo behavior
     v4 = data.amount % 5000
-
-    # Distance from typical business hours
     v5 = (data.hour - 12) ** 2
 
     features = np.array([[
@@ -106,7 +106,6 @@ def predict(data: TransactionInput, db: Session = Depends(get_db)):
     probability = float(model.predict_proba(features)[0][1])
     fraud = probability >= 0.5
 
-    # Risk tier logic
     if probability < 0.30:
         risk = "LOW"
     elif probability < 0.70:
@@ -115,18 +114,18 @@ def predict(data: TransactionInput, db: Session = Depends(get_db)):
         risk = "HIGH"
 
     # --------------------------------------------------
-    # 🔹 Save to Database
+    # 🔹 Save to Database (ONLY IF DB EXISTS)
     # --------------------------------------------------
 
-    record = FraudPrediction(
-        amount=data.amount,
-        probability=probability,
-        fraud=fraud,
-        risk_level=risk
-    )
-
-    db.add(record)
-    db.commit()
+    if db is not None:
+        record = FraudPrediction(
+            amount=data.amount,
+            probability=probability,
+            fraud=fraud,
+            risk_level=risk
+        )
+        db.add(record)
+        db.commit()
 
     # --------------------------------------------------
     # 🔹 API Response
