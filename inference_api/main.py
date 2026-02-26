@@ -1,18 +1,46 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends
 from typing import Dict
 import joblib
 import numpy as np
 import os
+from sqlalchemy.orm import Session
 
-from inference_api.schemas import TransactionInput, FraudResponse
+# ✅ RELATIVE IMPORTS
+from .database import SessionLocal, engine, Base
+from .models import FraudPrediction
+from .schemas import TransactionInput, FraudResponse
 
 app = FastAPI(
     title="Real-Time Transaction Fraud Detection API",
     version="1.0"
 )
 
-MODEL_PATH = os.path.join("artifacts", "fraud_model.pkl")
+# ✅ Create DB tables automatically
+Base.metadata.create_all(bind=engine)
+
+# ✅ DB session dependency
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+# --------------------------------------------------
+# MODEL LOADING
+# --------------------------------------------------
+
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.dirname(CURRENT_DIR)
+MODEL_PATH = os.path.join(PROJECT_ROOT, "artifacts", "fraud_model.pkl")
+
+print("Loading model from:", MODEL_PATH)
+
 model = joblib.load(MODEL_PATH)
+
+# --------------------------------------------------
+# ROUTES
+# --------------------------------------------------
 
 @app.get("/health", response_model=Dict[str, str])
 def health():
@@ -22,16 +50,21 @@ def health():
         "version": "1.0"
     }
 
+
 @app.post("/predict", response_model=FraudResponse)
-def predict(data: TransactionInput):
+def predict(data: TransactionInput, db: Session = Depends(get_db)):
+
+    # ✅ INTERNAL / AUTO-GENERATED FEATURES
+    v1 = 0.0
+    v2 = 0.0
+    v3 = 0.0
+    v4 = 0.0
+    v5 = 0.0
+
     features = np.array([[
         data.amount,
         data.hour,
-        data.v1,
-        data.v2,
-        data.v3,
-        data.v4,
-        data.v5
+        v1, v2, v3, v4, v5
     ]])
 
     probability = model.predict_proba(features)[0][1]
@@ -43,6 +76,17 @@ def predict(data: TransactionInput):
         risk = "MEDIUM"
     else:
         risk = "HIGH"
+
+    # ✅ SAVE RESULT TO MYSQL
+    record = FraudPrediction(
+        amount=data.amount,
+        probability=float(probability),
+        fraud=fraud,
+        risk_level=risk
+    )
+
+    db.add(record)
+    db.commit()
 
     return FraudResponse(
         fraud=fraud,
