@@ -6,16 +6,19 @@ import os
 from sqlalchemy.orm import Session
 
 # -----------------------------
-# RELATIVE IMPORTS
+# SCHEMAS (always required)
 # -----------------------------
 from .schemas import TransactionInput, FraudResponse
 
-# Optional DB imports (safe for Render)
+# -----------------------------
+# OPTIONAL DATABASE (safe for Render)
+# -----------------------------
 try:
     from .database import SessionLocal, engine, Base
     from .models import FraudPrediction
     DB_AVAILABLE = True
-except Exception:
+except Exception as e:
+    print("⚠️ Database disabled:", e)
     SessionLocal = None
     engine = None
     Base = None
@@ -63,7 +66,7 @@ except Exception as e:
     model = None
 
 # -----------------------------
-# ROOT ENDPOINT (NO 404)
+# ROOT ENDPOINT
 # -----------------------------
 @app.get("/")
 def root():
@@ -95,52 +98,57 @@ def predict(
     if model is None:
         raise HTTPException(status_code=500, detail="Model not loaded")
 
-    # -------------------------
-    # FEATURE ENGINEERING
-    # -------------------------
-    v1 = data.amount / 10000
-    v2 = data.hour / 24
-    v3 = (data.amount * data.hour) / 100000
-    v4 = data.amount % 5000
-    v5 = (data.hour - 12) ** 2
+    try:
+        # -------------------------
+        # FEATURE ENGINEERING
+        # -------------------------
+        v1 = data.amount / 10000
+        v2 = data.hour / 24
+        v3 = (data.amount * data.hour) / 100000
+        v4 = data.amount % 5000
+        v5 = (data.hour - 12) ** 2
 
-    features = np.array([[
-        data.amount,
-        data.hour,
-        v1, v2, v3, v4, v5
-    ]])
+        features = np.array([[
+            data.amount,
+            data.hour,
+            v1, v2, v3, v4, v5
+        ]])
 
-    # -------------------------
-    # MODEL PREDICTION
-    # -------------------------
-    probability = float(model.predict_proba(features)[0][1])
-    fraud = probability >= 0.5
+        # -------------------------
+        # MODEL PREDICTION
+        # -------------------------
+        probability = float(model.predict_proba(features)[0][1])
+        fraud = probability >= 0.5
 
-    if probability < 0.30:
-        risk = "LOW"
-    elif probability < 0.70:
-        risk = "MEDIUM"
-    else:
-        risk = "HIGH"
+        if probability < 0.30:
+            risk = "LOW"
+        elif probability < 0.70:
+            risk = "MEDIUM"
+        else:
+            risk = "HIGH"
 
-    # -------------------------
-    # SAVE TO DB (OPTIONAL)
-    # -------------------------
-    if DB_AVAILABLE and db is not None:
-        record = FraudPrediction(
-            amount=data.amount,
-            probability=probability,
+        # -------------------------
+        # SAVE TO DB (OPTIONAL)
+        # -------------------------
+        if DB_AVAILABLE and db is not None:
+            record = FraudPrediction(
+                amount=data.amount,
+                probability=probability,
+                fraud=fraud,
+                risk_level=risk
+            )
+            db.add(record)
+            db.commit()
+
+        # -------------------------
+        # RESPONSE
+        # -------------------------
+        return FraudResponse(
             fraud=fraud,
+            probability=round(probability, 4),
             risk_level=risk
         )
-        db.add(record)
-        db.commit()
 
-    # -------------------------
-    # RESPONSE
-    # -------------------------
-    return FraudResponse(
-        fraud=fraud,
-        probability=round(probability, 4),
-        risk_level=risk
-    )
+    except Exception as e:
+        print("❌ Prediction error:", e)
+        raise HTTPException(status_code=500, detail="Prediction failed")
