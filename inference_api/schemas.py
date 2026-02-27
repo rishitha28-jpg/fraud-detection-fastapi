@@ -1,20 +1,20 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class TransactionInput(BaseModel):
-    """
-    User-facing input schema.
-    Only real-world features are accepted.
-    Engineered features (v1–v5) are generated internally.
-    """
-    amount: float
-    hour: int
+    # Required fields
+    amount: float = Field(..., example=200.0)
+    hour: int = Field(..., ge=0, le=23, example=14)
+
+    # Optional ML internal features (auto-filled if not provided)
+    feature_3: float = Field(default=0.0, example=1.0)
+    feature_4: float = Field(default=0.0, example=0.0)
+    feature_5: float = Field(default=0.0, example=0.5)
+    feature_6: float = Field(default=0.0, example=3.0)
+    feature_7: float = Field(default=0.0, example=0.0)
 
 
 class FraudResponse(BaseModel):
-    """
-    API response schema.
-    """
     fraud: bool
     probability: float
     risk_level: str
