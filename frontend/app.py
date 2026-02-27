@@ -22,7 +22,7 @@ st.title("💳 Fraud Detection System")
 st.caption("Real-time transaction risk assessment using Machine Learning")
 
 # --------------------------------------------------
-# BACKEND HEALTH CHECK (INDUSTRY PRACTICE)
+# BACKEND HEALTH CHECK
 # --------------------------------------------------
 with st.spinner("Checking system status..."):
     try:
@@ -37,20 +37,20 @@ with st.spinner("Checking system status..."):
 st.divider()
 
 # --------------------------------------------------
-# USER INPUTS
+# USER INPUTS (ONLY BUSINESS INPUTS)
 # --------------------------------------------------
 amount = st.number_input(
     "Transaction Amount (₹)",
     min_value=0.0,
     step=100.0,
-    help="Higher transaction amounts may increase fraud risk"
+    value=500.0
 )
 
 hour = st.slider(
     "Transaction Hour (0–23)",
     min_value=0,
     max_value=23,
-    help="Late-night transactions are generally higher risk"
+    value=12
 )
 
 # --------------------------------------------------
@@ -58,13 +58,21 @@ hour = st.slider(
 # --------------------------------------------------
 if st.button("Check Fraud", disabled=(amount <= 0)):
 
+    # 🔴 IMPORTANT FIX: SEND ALL 7 FEATURES
     payload = {
-        "amount": amount,
-        "hour": hour
+        "amount": float(amount),
+        "hour": int(hour),
+
+        # Default engineered features (match training)
+        "feature_3": 1.0,
+        "feature_4": 0.0,
+        "feature_5": 0.5,
+        "feature_6": 3.0,
+        "feature_7": 0.0
     }
 
     try:
-        response = requests.post(API_URL, json=payload, timeout=5)
+        response = requests.post(API_URL, json=payload, timeout=10)
 
         if response.status_code == 200:
             result = response.json()
@@ -72,82 +80,48 @@ if st.button("Check Fraud", disabled=(amount <= 0)):
             probability = result["probability"]
             risk = result["risk_level"]
 
-            fraud_prob_pct = round(probability * 100, 1)
-            confidence_safe = round((1 - probability) * 100, 1)
+            fraud_pct = round(probability * 100, 2)
+            safe_pct = round((1 - probability) * 100, 2)
 
             # --------------------------------------------------
-            # INDUSTRY DECISION MAPPING
+            # DECISION LOGIC
             # --------------------------------------------------
             if risk == "LOW":
-                decision = "TRANSACTION APPROVED"
-                decision_icon = "🟢"
+                decision = "🟢 TRANSACTION APPROVED"
                 action = "Proceed with transaction"
+                color = st.success
             elif risk == "MEDIUM":
-                decision = "REVIEW REQUIRED"
-                decision_icon = "🟡"
-                action = "Initiate step-up authentication (OTP / manual verification)"
+                decision = "🟡 REVIEW REQUIRED"
+                action = "Perform OTP / manual verification"
+                color = st.warning
             else:
-                decision = "TRANSACTION BLOCKED"
-                decision_icon = "🔴"
-                action = "Block transaction and escalate to fraud investigation team"
+                decision = "🔴 TRANSACTION BLOCKED"
+                action = "Block and escalate to fraud team"
+                color = st.error
 
             st.divider()
 
-            # --------------------------------------------------
-            # 1️⃣ DECISION (EXECUTIVE VIEW)
-            # --------------------------------------------------
-            st.markdown(
-                f"<h2 style='margin-bottom:0;'>{decision_icon} {decision}</h2>",
-                unsafe_allow_html=True
-            )
+            st.subheader(decision)
 
-            # --------------------------------------------------
-            # 2️⃣ EXECUTIVE METRICS
-            # --------------------------------------------------
             col1, col2, col3 = st.columns(3)
+            col1.metric("Risk Level", risk)
+            col2.metric("Fraud Probability", f"{fraud_pct}%")
+            col3.metric("Confidence (Safe)", f"{safe_pct}%")
 
-            col1.metric("Risk Tier", risk)
-            col2.metric("Fraud Probability", f"{fraud_prob_pct}%")
-            col3.metric("Confidence (Safe)", f"{confidence_safe}%")
-
-            # --------------------------------------------------
-            # 3️⃣ RISK FACTORS (EXPLAINABILITY)
-            # --------------------------------------------------
-            st.subheader("🔍 Risk Factors Identified")
-
-            reasons = []
+            st.subheader("🔍 Risk Factors")
 
             if amount >= 100000:
-                reasons.append("⚠ High transaction amount detected")
+                st.write("⚠ High transaction amount")
             else:
-                reasons.append("✔ Transaction amount within normal range")
+                st.write("✔ Normal transaction amount")
 
             if hour < 6 or hour > 22:
-                reasons.append("⚠ Unusual transaction timing")
+                st.write("⚠ Unusual transaction timing")
             else:
-                reasons.append("✔ Transaction timing within normal range")
+                st.write("✔ Normal transaction timing")
 
-            if risk == "HIGH":
-                reasons.append("❌ Strong fraud indicators detected")
-            elif risk == "MEDIUM":
-                reasons.append("⚠ Moderate anomaly patterns detected")
-            else:
-                reasons.append("✔ No significant anomaly patterns detected")
-
-            for r in reasons:
-                st.write(r)
-
-            # --------------------------------------------------
-            # 4️⃣ RECOMMENDED ACTION
-            # --------------------------------------------------
             st.subheader("➡ Recommended Action")
-
-            if risk == "LOW":
-                st.success(action)
-            elif risk == "MEDIUM":
-                st.warning(action)
-            else:
-                st.error(action)
+            color(action)
 
         else:
             st.error(f"API Error ({response.status_code})")
