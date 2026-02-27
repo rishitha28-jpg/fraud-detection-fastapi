@@ -1,73 +1,46 @@
-from fastapi import FastAPI, Depends, HTTPException
-from typing import Dict, Optional
+from fastapi import FastAPI, HTTPException
+from typing import Dict
 import joblib
 import numpy as np
 import os
-from sqlalchemy.orm import Session
 
-# -----------------------------
-# SCHEMAS (always required)
-# -----------------------------
 from .schemas import TransactionInput, FraudResponse
 
-# -----------------------------
-# OPTIONAL DATABASE (safe for Render)
-# -----------------------------
-try:
-    from .database import SessionLocal, engine, Base
-    from .models import FraudPrediction
-    DB_AVAILABLE = True
-except Exception as e:
-    print("⚠️ Database disabled:", e)
-    SessionLocal = None
-    engine = None
-    Base = None
-    FraudPrediction = None
-    DB_AVAILABLE = False
-
-# -----------------------------
+# -------------------------------------------------
 # APP CONFIG
-# -----------------------------
+# -------------------------------------------------
 app = FastAPI(
     title="Real-Time Transaction Fraud Detection API",
-    version="1.0"
+    version="1.0.0"
 )
 
-# -----------------------------
-# CREATE TABLES (ONLY IF DB EXISTS)
-# -----------------------------
-if DB_AVAILABLE and engine:
-    Base.metadata.create_all(bind=engine)
+# -------------------------------------------------
+# LOAD MODEL (SAFE FOR LOCAL + RENDER)
+# -------------------------------------------------
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+MODEL_PATH = os.path.join(
+    os.path.dirname(BASE_DIR),
+    "artifacts",
+    "fraud_model.pkl"
+)
 
-# -----------------------------
-# DATABASE DEPENDENCY
-# -----------------------------
-def get_db() -> Optional[Session]:
-    if not DB_AVAILABLE or SessionLocal is None:
-        return None
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
-# -----------------------------
-# MODEL LOADING
-# -----------------------------
-CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
-PROJECT_ROOT = os.path.dirname(CURRENT_DIR)
-MODEL_PATH = os.path.join(PROJECT_ROOT, "artifacts", "fraud_model.pkl")
+model = None
+EXPECTED_FEATURES = 7
 
 try:
-    model = joblib.load(MODEL_PATH)
-    print("✅ ML model loaded successfully")
+    if os.path.exists(MODEL_PATH):
+        model = joblib.load(MODEL_PATH)
+        print("✅ Fraud model loaded successfully")
+        if hasattr(model, "n_features_in_"):
+            print("📊 Model expects features:", model.n_features_in_)
+    else:
+        print("❌ Model file not found:", MODEL_PATH)
 except Exception as e:
-    print("❌ Model load failed:", e)
-    model = None
+    print("❌ Model loading failed:", str(e))
 
-# -----------------------------
-# ROOT ENDPOINT
-# -----------------------------
+# -------------------------------------------------
+# ROOT
+# -------------------------------------------------
 @app.get("/")
 def root():
     return {
@@ -76,79 +49,81 @@ def root():
         "health": "/health"
     }
 
-# -----------------------------
-# HEALTH CHECK
-# -----------------------------
+# -------------------------------------------------
+# HEALTH
+# -------------------------------------------------
 @app.get("/health", response_model=Dict[str, str])
 def health():
     return {
-        "status": "API running",
+        "status": "OK",
         "service": "fraud-detection",
-        "version": "1.0"
+        "version": "1.0.0"
     }
 
-# -----------------------------
-# PREDICTION ENDPOINT
-# -----------------------------
+# -------------------------------------------------
+# PREDICT
+# -------------------------------------------------
 @app.post("/predict", response_model=FraudResponse)
-def predict(
-    data: TransactionInput,
-    db: Optional[Session] = Depends(get_db)
-):
+def predict(data: TransactionInput):
+
+    # 1️⃣ Check model loaded
     if model is None:
-        raise HTTPException(status_code=500, detail="Model not loaded")
-
-    try:
-        # -------------------------
-        # FEATURE ENGINEERING
-        # -------------------------
-        v1 = data.amount / 10000
-        v2 = data.hour / 24
-        v3 = (data.amount * data.hour) / 100000
-        v4 = data.amount % 5000
-        v5 = (data.hour - 12) ** 2
-
-        features = np.array([[
-            data.amount,
-            data.hour,
-            v1, v2, v3, v4, v5
-        ]])
-
-        # -------------------------
-        # MODEL PREDICTION
-        # -------------------------
-        probability = float(model.predict_proba(features)[0][1])
-        fraud = probability >= 0.5
-
-        if probability < 0.30:
-            risk = "LOW"
-        elif probability < 0.70:
-            risk = "MEDIUM"
-        else:
-            risk = "HIGH"
-
-        # -------------------------
-        # SAVE TO DB (OPTIONAL)
-        # -------------------------
-        if DB_AVAILABLE and db is not None:
-            record = FraudPrediction(
-                amount=data.amount,
-                probability=probability,
-                fraud=fraud,
-                risk_level=risk
-            )
-            db.add(record)
-            db.commit()
-
-        # -------------------------
-        # RESPONSE
-        # -------------------------
-        return FraudResponse(
-            fraud=fraud,
-            probability=round(probability, 4),
-            risk_level=risk
+        raise HTTPException(
+            status_code=500,
+            detail="Fraud model not loaded"
         )
 
+    # 2️⃣ Prepare features safely
+    try:
+        features = np.array([[ 
+            float(data.amount),
+            float(data.hour),
+            float(data.feature_3),
+            float(data.feature_4),
+            float(data.feature_5),
+            float(data.feature_6),
+            float(data.feature_7)
+        ]])
     except Exception as e:
-        print("❌ Prediction error:", e)
-        raise HTTPException(status_code=500, detail="Prediction failed")
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid input values: {str(e)}"
+        )
+
+    # 3️⃣ Validate feature count
+    if hasattr(model, "n_features_in_"):
+        if features.shape[1] != model.n_features_in_:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Model expects {model.n_features_in_} features but received {features.shape[1]}"
+            )
+
+    # 4️⃣ Make prediction safely
+    try:
+        if hasattr(model, "predict_proba"):
+            probability = float(model.predict_proba(features)[0][1])
+        else:
+            # fallback if model has no predict_proba
+            prediction = model.predict(features)[0]
+            probability = float(prediction)
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Prediction failed: {str(e)}"
+        )
+
+    # 5️⃣ Risk logic
+    fraud = probability >= 0.5
+
+    if probability < 0.30:
+        risk = "LOW"
+    elif probability < 0.70:
+        risk = "MEDIUM"
+    else:
+        risk = "HIGH"
+
+    return FraudResponse(
+        fraud=fraud,
+        probability=round(probability, 4),
+        risk_level=risk
+    )

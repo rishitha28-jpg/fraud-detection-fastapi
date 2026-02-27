@@ -7,3 +7,4 @@ joblib
 sqlalchemy
 pymysql
 python-dotenv
+cryptography
