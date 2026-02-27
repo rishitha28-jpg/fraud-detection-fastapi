@@ -1,10 +1,16 @@
+# fastapi
+# uvicorn
+# scikit-learn
+# pandas
+# numpy
+# joblib
+# sqlalchemy
+# pymysql
+# python-dotenv
+# cryptography
 fastapi
 uvicorn
 scikit-learn
-pandas
 numpy
 joblib
-sqlalchemy
-pymysql
-python-dotenv
-cryptography
+pydantic
