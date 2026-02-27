@@ -60,16 +60,14 @@ if st.button("Check Fraud", disabled=(amount <= 0)):
 
     # 🔴 IMPORTANT FIX: SEND ALL 7 FEATURES
     payload = {
-        "amount": float(amount),
-        "hour": int(hour),
-
-        # Default engineered features (match training)
-        "feature_3": 1.0,
-        "feature_4": 0.0,
-        "feature_5": 0.5,
-        "feature_6": 3.0,
-        "feature_7": 0.0
-    }
+    "amount": amount,
+    "hour": hour,
+    "feature_3": 0,
+    "feature_4": 0,
+    "feature_5": 0,
+    "feature_6": 0,
+    "feature_7": 0
+}
 
     try:
         response = requests.post(API_URL, json=payload, timeout=10)
